@@ -104,10 +104,10 @@ st.markdown("""
         overflow: hidden;
     }
     
-    /* Decorativo animado de scooter flat */
+    /* Decorativo animado de scooter flat (Correndo para a esquerda) */
     @keyframes drive-scooter {
-        0% { left: -100px; }
-        100% { left: 110%; }
+        0% { left: 110%; }
+        100% { left: -100px; }
     }
     .scooter-decor {
         position: absolute;
@@ -346,7 +346,7 @@ with aba_enviar:
                     "remetente_sobrenome": remetente_sobrenome,
                     "remetente_email": remetente_email,
                     "destinatario": destinatario,
-                    "mensagem": message_completa if 'message_completa' in locals() else mensagem_completa,
+                    "mensagem": mensagem_completa,
                     "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "quem_palpitou": "",
                     "palpite": "",
@@ -376,29 +376,29 @@ with aba_mural:
             orig_id = msg["id"]
             
             # Renderizador da Skill Visual: Talão de Nota Fiscal / Cupom Térmico 99Food
+            # IMPORTANTE: Alinhado estritamente à esquerda para evitar renderização incorreta de markdown
             st.markdown(f"""
-            <div class="receipt-card">
-                <div class="receipt-header">
-                    <span>PEDIDO: #99F-{orig_id:04d}</span>
-                    <span>{msg['data']}</span>
-                </div>
-                <div class="receipt-recipient">💛 PARA: {msg['destinatario']}</div>
-                <div class="receipt-message-box">"{msg['mensagem']}"</div>
-                
-                <div class="receipt-barcode">
-                    <div class="barcode-line" style="width: 3px;"></div>
-                    <div class="barcode-line" style="width: 1px;"></div>
-                    <div class="barcode-line" style="width: 4px;"></div>
-                    <div class="barcode-line" style="width: 2px;"></div>
-                    <div class="barcode-line" style="width: 1px;"></div>
-                    <div class="barcode-line" style="width: 3px;"></div>
-                    <div class="barcode-line" style="width: 5px;"></div>
-                    <div class="barcode-line" style="width: 1px;"></div>
-                    <div class="barcode-line" style="width: 2px;"></div>
-                    <div class="barcode-line" style="width: 4px;"></div>
-                </div>
-            </div>
-            <div class="receipt-sawtooth"></div>
+<div class="receipt-card">
+<div class="receipt-header">
+<span>PEDIDO: #99F-{orig_id:04d}</span>
+<span>{msg['data']}</span>
+</div>
+<div class="receipt-recipient">💛 PARA: {msg['destinatario']}</div>
+<div class="receipt-message-box">"{msg['mensagem']}"</div>
+<div class="receipt-barcode">
+<div class="barcode-line" style="width: 3px;"></div>
+<div class="barcode-line" style="width: 1px;"></div>
+<div class="barcode-line" style="width: 4px;"></div>
+<div class="barcode-line" style="width: 2px;"></div>
+<div class="barcode-line" style="width: 1px;"></div>
+<div class="barcode-line" style="width: 3px;"></div>
+<div class="barcode-line" style="width: 5px;"></div>
+<div class="barcode-line" style="width: 1px;"></div>
+<div class="barcode-line" style="width: 2px;"></div>
+<div class="barcode-line" style="width: 4px;"></div>
+</div>
+</div>
+<div class="receipt-sawtooth"></div>
             """, unsafe_allow_html=True)
             
             # Se o palpite NÃO foi feito, exibe o formulário de tentativa única
