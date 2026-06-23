@@ -116,6 +116,7 @@ def salvar_nova_mensagem_global(nova_msg):
             return True
         except Exception as e:
             st.error(f"Erro ao salvar mensagem no Supabase: {e}")
+            return False
             
     # Fallback local em JSON
     mensagens = carregar_mensagens_locais()
@@ -138,6 +139,7 @@ def salvar_palpite_global(msg_id, quem_palpitou, palpite, acertou):
             return True
         except Exception as e:
             st.error(f"Erro ao registrar o palpite no Supabase: {e}")
+            return False
             
     # Fallback local em JSON
     mensagens = carregar_mensagens_locais()
@@ -439,7 +441,7 @@ with aba_enviar:
                     "remetente_sobrenome": remetente_sobrenome,
                     "remetente_email": remetente_email,
                     "destinatario": destinatario,
-                    "mensagem": mensagem_completa, # <-- Corrigido aqui de message_completa para mensagem_completa!
+                    "mensagem": mensagem_completa,
                     "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "quem_palpitou": "",
                     "palpite": "",
@@ -448,9 +450,9 @@ with aba_enviar:
                 }
                 
                 # Salva o novo registro de forma persistente (Supabase com fallback local)
-                salvar_nova_mensagem_global(nova_msg)
-                st.success("Mensagem enviada com sucesso para a cozinha! Agradecemos a participação. 🛵💨")
-                st.rerun()
+                if salvar_nova_mensagem_global(nova_msg):
+                    st.success("Mensagem enviada com sucesso para a cozinha! Agradecemos a participação. 🛵💨")
+                    st.rerun()
             else:
                 st.error("Por favor, preencha todos os campos do formulário.")
 
@@ -507,8 +509,8 @@ with aba_mural:
                             if normalizar_nome(identificacao) in normalizar_nome(msg["destinatario"]):
                                 # Registra palpite definitivo (Tentativa única)
                                 acertou = normalizar_nome(chute) == normalizar_nome(msg["remetente_dchat"])
-                                salvar_palpite_global(orig_id, identificacao, chute, acertou)
-                                st.rerun()
+                                if salvar_palpite_global(orig_id, identificacao, chute, acertou):
+                                    st.rerun()
                             else:
                                 st.markdown(f"""
                                 <div class="resultado-palpite-box" style="border-left: 6px solid #FF8F00 !important;">
