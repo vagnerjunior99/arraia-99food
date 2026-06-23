@@ -47,10 +47,10 @@ def carregar_mensagens_locais():
         {
             "id": 1,
             "remetente_dchat": "Carlos_99",
-            "remetente_nome": "Carlos",
-            "remetente_sobrenome": "Silva",
-            "remetente_email": "carlos.silva@99app.com",
-            "destinatario": "Mariana",
+            "remetente_nome": "",
+            "remetente_sobrenome": "",
+            "remetente_email": "",
+            "destinatario": "Mariana_99",
             "mensagem": "Você não é um cupom de 10%OFF do 99Food, mas quero te dizer/lembrar que... você salvou o meu dia quando me ajudou com aquela planilha de Key Accounts!",
             "data": "15/06/2026 09:30",
             "quem_palpitou": "",
@@ -413,13 +413,9 @@ with aba_enviar:
     st.markdown('<div class="centered-title">Prepare seu pedido de agradecimento! 💌</div>', unsafe_allow_html=True)
     
     with st.form(key="form_correio", clear_on_submit=True):
-        # Mapeamento do novo padrão de 4 campos de identificação do remetente
-        remetente_dchat = st.text_input("Nome no D-Chat (Ficará oculto no mural para adivinhação):").strip()
-        remetente_nome = st.text_input("Nome:").strip()
-        remetente_sobrenome = st.text_input("Sobrenome:").strip()
-        remetente_email = st.text_input("E-mail:").strip()
-        
-        destinatario = st.text_input("Para quem é a mensagem? (Nome do colega):").strip()
+        # Mapeamento do novo padrão simplificado de campos para o D-Chat
+        remetente_dchat = st.text_input("Seu nome do D-Chat").strip()
+        destinatario = st.text_input("Para quem é a mensagem? (Nome do D-Chat)").strip()
         
         st.markdown("<p style='font-weight: bold; margin-bottom: 2px; color:#212121 !important;'>Complete a frase com uma lembrança:</p>", unsafe_allow_html=True)
         texto_base = "Você não é um cupom do 99Food, mas quero te dizer/lembrar que..."
@@ -431,15 +427,23 @@ with aba_enviar:
         botao_enviar = st.form_submit_button("Enviar Recado 🚀")
         
         if botao_enviar:
-            if remetente_dchat and remetente_nome and remetente_sobrenome and remetente_email and destinatario and lembranca:
+            # Sistema de notificações e validações obrigatórias
+            if not remetente_dchat:
+                st.error("⚠️ O preenchimento do campo 'Seu nome do D-Chat' é obrigatório!")
+            elif not destinatario:
+                st.error("⚠️ O preenchimento do campo 'Para quem é a mensagem? (Nome do D-Chat)' é obrigatório!")
+            elif not lembranca.strip():
+                st.error("⚠️ O preenchimento do campo com o recado/mensagem é obrigatório!")
+            else:
                 mensagem_completa = f"{texto_base} {lembranca}"
                 
+                # Monta a estrutura da nova mensagem passando valores em branco para os campos de identificação física descartados
                 nova_msg = {
                     "id": len(mensagens_mural) + 1,
                     "remetente_dchat": remetente_dchat,
-                    "remetente_nome": remetente_nome,
-                    "remetente_sobrenome": remetente_sobrenome,
-                    "remetente_email": remetente_email,
+                    "remetente_nome": "",
+                    "remetente_sobrenome": "",
+                    "remetente_email": "",
                     "destinatario": destinatario,
                     "mensagem": mensagem_completa,
                     "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -453,8 +457,6 @@ with aba_enviar:
                 if salvar_nova_mensagem_global(nova_msg):
                     st.success("Mensagem enviada com sucesso para a cozinha! Agradecemos a participação. 🛵💨")
                     st.rerun()
-            else:
-                st.error("Por favor, preencha todos os campos do formulário.")
 
 # --- ABA 2: MURAL DE ENTREGAS ---
 with aba_mural:
