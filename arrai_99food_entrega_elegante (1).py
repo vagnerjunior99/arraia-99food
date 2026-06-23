@@ -4,29 +4,40 @@ from datetime import datetime
 import unicodedata
 import json
 import os
+from supabase import create_client, Client
 
-# Configuração da página seguindo regras de design da 99Food
+# Configuração de página no padrão visual da 99Food
 st.set_page_config(
     page_title="Entrega Elegante 99Food", 
     page_icon="🌽", 
     layout="centered"
 )
 
-# --- SISTEMA DE PERSISTÊNCIA LOCAL (FICHEIRO JSON) ---
+# --- CONFIGURAÇÃO DO SUPABASE COM FALLBACK SEGURO ---
 FICHEIRO_MENSAGENS = "mensagens.json"
 
+def obter_cliente_supabase():
+    """Inicializa o cliente do Supabase utilizando as chaves dos Secrets se disponíveis."""
+    try:
+        if "supabase" in st.secrets:
+            url = st.secrets["supabase"]["url"]
+            key = st.secrets["supabase"]["key"]
+            return create_client(url, key)
+    except Exception:
+        pass
+    return None
+
 def carregar_mensagens_locais():
-    """Carrega o histórico do ficheiro JSON local se existir."""
+    """Carrega as mensagens locais em formato JSON caso o Supabase não esteja ativo."""
     if os.path.exists(FICHEIRO_MENSAGENS):
         try:
             with open(FICHEIRO_MENSAGENS, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
-    # Registro padrão inicial do Arraiá para demonstração
     return [
         {
-            "id": 0,
+            "id": 1,
             "remetente_dchat": "Carlos_99",
             "remetente_nome": "Carlos",
             "remetente_sobrenome": "Silva",
@@ -42,21 +53,97 @@ def carregar_mensagens_locais():
     ]
 
 def guardar_mensagens_locais(mensagens):
-    """Escreve as mensagens de forma permanente no disco do servidor."""
+    """Escreve as mensagens locais no disco do servidor como redundância."""
     try:
         with open(FICHEIRO_MENSAGENS, "w", encoding="utf-8") as f:
             json.dump(mensagens, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        st.error(f"Erro ao salvar dados localmente: {e}")
+    except Exception:
+        pass
 
-# --- SISTEMA DE MEMÓRIA COMPARTILHADA ENTRE SESSÕES ---
+# --- API DE DADOS CENTRALIZADA ---
 @st.cache_resource
 def iniciar_banco_compartilhado():
-    """Cria um cache único na memória do servidor para todas as abas e sessões."""
-    return {"mensagens": carregar_mensagens_locais()}
+    """Cache em memória compartilhada no servidor para sincronização ultra rápida."""
+    return {"mensagens": []}
 
-# Banco de dados unificado
 banco_dados = iniciar_banco_compartilhado()
+
+def carregar_mensagens_globais():
+    """Lê todas as mensagens, priorizando a tabela do Supabase em tempo real."""
+    client = obter_cliente_supabase()
+    if client is not None:
+        try:
+            # Busca todas as linhas ordenadas por ID de forma ascendente
+            response = client.table("mensagens").select("*").order("id", desc=False).execute()
+            mensagens = response.data
+            banco_dados["mensagens"] = mensagens
+            return mensagens
+        except Exception as e:
+            st.error(f"Erro ao conectar com o Supabase: {e}")
+            
+    # Caso as credenciais não estejam salvas, executa localmente
+    banco_dados["mensagens"] = carregar_mensagens_locais()
+    return banco_dados["mensagens"]
+
+def salvar_nova_mensagem_global(nova_msg):
+    """Salva a nova mensagem de forma persistente e instantânea."""
+    client = obter_cliente_supabase()
+    if client is not None:
+        try:
+            # Envia os dados para a tabela do Supabase
+            dados_insercao = {
+                "remetente_dchat": nova_msg["remetente_dchat"],
+                "remetente_nome": nova_msg["remetente_nome"],
+                "remetente_sobrenome": nova_msg["remetente_sobrenome"],
+                "remetente_email": nova_msg["remetente_email"],
+                "destinatario": nova_msg["destinatario"],
+                "mensagem": nova_msg["mensagem"],
+                "data": nova_msg["data"],
+                "quem_palpitou": nova_msg["quem_palpitou"],
+                "palpite": nova_msg["palpite"],
+                "palpite_feito": nova_msg["palpite_feito"],
+                "acertou": nova_msg["acertou"]
+            }
+            client.table("mensagens").insert(dados_insercao).execute()
+            return True
+        except Exception as e:
+            st.error(f"Erro ao salvar mensagem no Supabase: {e}")
+            
+    # Fallback local em JSON
+    mensagens = carregar_mensagens_locais()
+    nova_msg["id"] = len(mensagens) + 1
+    mensagens.append(nova_msg)
+    guardar_mensagens_locais(mensagens)
+    return True
+
+def salvar_palpite_global(msg_id, quem_palpitou, palpite, acertou):
+    """Atualiza de forma irreversível e persistente o palpite feito (Tentativa Única)."""
+    client = obter_cliente_supabase()
+    if client is not None:
+        try:
+            client.table("mensagens").update({
+                "quem_palpitou": quem_palpitou,
+                "palpite": palpite,
+                "palpite_feito": True,
+                "acertou": acertou
+            }).eq("id", msg_id).execute()
+            return True
+        except Exception as e:
+            st.error(f"Erro ao registrar o palpite no Supabase: {e}")
+            
+    # Fallback local em JSON
+    mensagens = carregar_mensagens_locais()
+    for m in mensagens:
+        if m["id"] == msg_id:
+            m["quem_palpitou"] = quem_palpitou
+            m["palpite"] = palpite
+            m["palpite_feito"] = True
+            m["acertou"] = acertou
+    guardar_mensagens_locais(mensagens)
+    return True
+
+# --- CARREGA AS MENSAGENS EM SEGUNDO PLANO ---
+mensagens_mural = carregar_mensagens_globais()
 
 # --- FUNÇÃO AUXILIAR PARA NORMALIZAR NOMES ---
 def normalizar_nome(texto):
@@ -66,22 +153,22 @@ def normalizar_nome(texto):
     texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
     return texto
 
-# --- ESTILOS VISUAIS E REGRAS DO BRAND BOOK DA 99FOOD ---
-# Cores oficiais: Amarelo (#FFDD00), Laranja (#FF8F00), Cinza Escuro (#212121), Cinza Claro (#F1F1F1)
+# --- ESTILIZAÇÃO E DIRETRIZES DO BRAND BOOK 99FOOD ---
+# Amarelo Prioritário (#FFDD00), Laranja de Apoio (#FF8F00), Cinza Escuro de Contraste (#212121)
 st.markdown("""
     <style>
-    /* Fundo Amarelo Oficial 99 (Plano, sem gradientes) */
+    /* Fundo Amarelo Oficial 99 (Sem gradientes para respeitar ID visual da marca) */
     .stApp {
         background-color: #FFDD00 !important;
         font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
     
-    /* Coesão de textos em Cinza Escuro para leitura perfeita e contraste */
+    /* Leitura de textos em Cinza Escuro */
     .stApp label, .stApp p, .stApp span, .stApp li {
         color: #212121 !important;
     }
     
-    /* Inputs brancos sólidos de alto contraste */
+    /* Inputs brancos limpos de alto contraste */
     input, textarea {
         background-color: #FFFFFF !important;
         color: #212121 !important;
@@ -104,10 +191,10 @@ st.markdown("""
         overflow: hidden;
     }
     
-    /* Decorativo animado de scooter flat (Correndo para a esquerda) */
+    /* Scooter caipira correndo da direita para a esquerda de forma física natural */
     @keyframes drive-scooter {
-        0% { left: 110%; }
-        100% { left: -100px; }
+        0% { right: -100px; }
+        100% { right: 110%; }
     }
     .scooter-decor {
         position: absolute;
@@ -116,7 +203,6 @@ st.markdown("""
         animation: drive-scooter 16s linear infinite;
     }
     
-    /* Título em Amarelo Oficial */
     .header-title {
         color: #FFDD00 !important;
         font-weight: 900 !important;
@@ -285,7 +371,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CABEÇALHO UNIFICADO DO ARRAIÁ (SEM GRADIENTES E COM SCOOTER COESIVO) ---
+# --- CABEÇALHO UNIFICADO DO ARRAIÁ ---
 st.markdown("""
 <div class="header-box">
     <div class="scooter-decor">🛵💨</div>
@@ -295,7 +381,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- QUADRO DE INSTRUÇÕES (REDAÇÃO DE ACORDO COM O ENUNCIADO APROVADO) ---
+# --- QUADRO DE INSTRUÇÕES DE ACORDO COM O ENUNCIADO DOS ORANGERS ---
 st.markdown("""
 <div class="enunciado-container">
     <div style="font-weight:bold; font-size:1.2rem; color: #212121; margin-bottom: 12px;">🍿 🎏 Olha a Entrega Elegante! É verdade!</div>
@@ -309,7 +395,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Configura as abas principais (O mural agora fica 100% aberto por padrão!)
+# Configuração das duas abas do aplicativo (Mural 100% aberto!)
 aba_enviar, aba_mural = st.tabs(["💌 Enviar Mensagem", "📌 Mural de Entregas"])
 
 # --- ABA 1: ENVIAR MENSAGEM ---
@@ -317,7 +403,7 @@ with aba_enviar:
     st.markdown('<div class="centered-title">Prepare seu pedido de agradecimento! 💌</div>', unsafe_allow_html=True)
     
     with st.form(key="form_correio", clear_on_submit=True):
-        # Mudar os campos de envio de mensagem conforme solicitado
+        # Mapeamento do novo padrão de 4 campos de identificação do remetente
         remetente_dchat = st.text_input("Nome no D-Chat (Ficará oculto no mural para adivinhação):").strip()
         remetente_nome = st.text_input("Nome:").strip()
         remetente_sobrenome = st.text_input("Sobrenome:").strip()
@@ -337,10 +423,9 @@ with aba_enviar:
         if botao_enviar:
             if remetente_dchat and remetente_nome and remetente_sobrenome and remetente_email and destinatario and lembranca:
                 mensagem_completa = f"{texto_base} {lembranca}"
-                novo_id = len(banco_dados["mensagens"])
                 
                 nova_msg = {
-                    "id": novo_id,
+                    "id": len(mensagens_mural) + 1,
                     "remetente_dchat": remetente_dchat,
                     "remetente_nome": remetente_nome,
                     "remetente_sobrenome": remetente_sobrenome,
@@ -354,10 +439,8 @@ with aba_enviar:
                     "acertou": False
                 }
                 
-                # Guarda as informações na memória compartilhada do servidor e atualiza o JSON local
-                banco_dados["mensagens"].append(nova_msg)
-                guardar_mensagens_locais(banco_dados["mensagens"])
-                
+                # Salva o novo registro de forma persistente (Supabase com fallback local)
+                salvar_nova_mensagem_global(nova_msg)
                 st.success("Mensagem enviada com sucesso para a cozinha! Agradecemos a participação. 🛵💨")
                 st.rerun()
             else:
@@ -367,16 +450,15 @@ with aba_enviar:
 with aba_mural:
     st.markdown('<div class="centered-title">👀 Quem recebeu uma entrega hoje?</div>', unsafe_allow_html=True)
     
-    # O Mural agora é 100% aberto e visível para todos de forma irrestrita
-    if len(banco_dados["mensagens"]) == 0:
+    # O Mural é 100% aberto e visível para todos de forma irrestrita
+    if len(mensagens_mural) == 0:
         st.info("Ainda não foram feitas entregas. Seja o primeiro a espalhar carinho!")
     else:
         # Exibe os recibos ordenados pelos mais recentes
-        for msg in reversed(banco_dados["mensagens"]):
+        for msg in reversed(mensagens_mural):
             orig_id = msg["id"]
             
-            # Renderizador da Skill Visual: Talão de Nota Fiscal / Cupom Térmico 99Food
-            # IMPORTANTE: Alinhado estritamente à esquerda para evitar renderização incorreta de markdown
+            # Renderizador visual do recibo térmico de nota fiscal 99Food (Sem indentação para não quebrar markdown)
             st.markdown(f"""
 <div class="receipt-card">
 <div class="receipt-header">
@@ -399,7 +481,7 @@ with aba_mural:
 </div>
 </div>
 <div class="receipt-sawtooth"></div>
-            """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
             
             # Se o palpite NÃO foi feito, exibe o formulário de tentativa única
             if not msg["palpite_feito"]:
@@ -416,13 +498,8 @@ with aba_mural:
                             # Garante que apenas o destinatário correto possa arriscar o palpite
                             if normalizar_nome(identificacao) in normalizar_nome(msg["destinatario"]):
                                 # Registra palpite definitivo (Tentativa única)
-                                msg["palpite_feito"] = True
-                                msg["quem_palpitou"] = identificacao
-                                msg["palpite"] = chute
-                                msg["acertou"] = normalizar_nome(chute) == normalizar_nome(msg["remetente_dchat"])
-                                
-                                # Grava a tentativa atualizada no disco e no cache do servidor
-                                guardar_mensagens_locais(banco_dados["mensagens"])
+                                acertou = normalizar_nome(chute) == normalizar_nome(msg["remetente_dchat"])
+                                salvar_palpite_global(orig_id, identificacao, chute, acertou)
                                 st.rerun()
                             else:
                                 st.markdown(f"""
@@ -452,8 +529,15 @@ with aba_mural:
 if st.query_params.get("adm") == "true":
     st.markdown("---")
     if st.text_input("Senha Master:", type="password") == "99food2026":
-        st.dataframe(pd.DataFrame(banco_dados["mensagens"]))
+        st.dataframe(pd.DataFrame(mensagens_mural))
         if st.button("Limpar Dados 🧹"):
-            banco_dados["mensagens"] = []
+            # Limpa tabela se conectada ao Supabase
+            client = obter_cliente_supabase()
+            if client is not None:
+                try:
+                    # Deleta todas as linhas da tabela
+                    client.table("mensagens").delete().neq("id", -1).execute()
+                except Exception:
+                    pass
             guardar_mensagens_locais([])
             st.rerun()
