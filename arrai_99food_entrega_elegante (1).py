@@ -20,8 +20,16 @@ def obter_cliente_supabase():
     """Inicializa o cliente do Supabase utilizando as chaves dos Secrets se disponíveis."""
     try:
         if "supabase" in st.secrets:
-            url = st.secrets["supabase"]["url"]
-            key = st.secrets["supabase"]["key"]
+            url = st.secrets["supabase"]["url"].strip()
+            key = st.secrets["supabase"]["key"].strip()
+            
+            # Limpeza automática para evitar o erro PGRST125 de caminho inválido
+            if url.endswith("/rest/v1"):
+                url = url[:-8]
+            elif url.endswith("/rest/v1/"):
+                url = url[:-9]
+            url = url.rstrip("/")
+            
             return create_client(url, key)
     except Exception:
         pass
