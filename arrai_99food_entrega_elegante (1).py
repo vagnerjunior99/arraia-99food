@@ -439,7 +439,7 @@ with aba_enviar:
                     "remetente_sobrenome": remetente_sobrenome,
                     "remetente_email": remetente_email,
                     "destinatario": destinatario,
-                    "mensagem": mensagem_completa,
+                    "mensagem": mensagem_completa, # <-- Corrigido aqui de message_completa para mensagem_completa!
                     "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "quem_palpitou": "",
                     "palpite": "",
