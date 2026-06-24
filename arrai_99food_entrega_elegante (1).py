@@ -512,7 +512,8 @@ with aba_mural:
             if not palpite_feito_na_sessao:
                 with st.form(key=f"form_palpite_{orig_id}"):
                     st.markdown("<p style='font-weight: bold; color: #212121 !important;'>🕵️ Adivinhe quem te enviou esta mensagem:</p>", unsafe_allow_html=True)
-                    identificacao = st.text_input("Seu nome (quem recebeu o recado):", key=f"id_{orig_id}", placeholder="Digite seu nome para validar...").strip()
+                    # Alterado conforme solicitado para melhor clareza na identificação do nome no cartão
+                    identificacao = st.text_input("Seu nome (Nome como está no recado):", key=f"id_{orig_id}", placeholder="Digite seu nome para validar...").strip()
                     chute = st.text_input("Quem você acha que enviou? (Nome como está no D-Chat)", key=f"chute_{orig_id}", placeholder="D-Chat do colega...").strip()
                     
                     # CTA Otimizada para 12 caracteres (Dentro do limite de 18 do Brand Book)
