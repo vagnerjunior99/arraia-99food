@@ -189,6 +189,11 @@ st.markdown("""
         color: #777777 !important;
     }
     
+    /* Ocultar legenda/ajuda padrão do Streamlit de 'Press Enter to apply' */
+    div[data-testid="InputInstructions"] {
+        display: none !important;
+    }
+    
     /* --- CABEÇALHO PRETO LIMPO --- */
     .header-box {
         background-color: #212121 !important;
