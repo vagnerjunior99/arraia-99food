@@ -13,6 +13,10 @@ st.set_page_config(
     layout="centered"
 )
 
+# --- INICIALIZAÇÃO DE SESSÃO PRIVADA PARA PALPITES ---
+if "meus_palpites" not in st.session_state:
+    st.session_state.meus_palpites = {}
+
 # --- CONFIGURAÇÃO DO SUPABASE COM FALLBACK SEGURO ---
 FICHEIRO_MENSAGENS = "mensagens.json"
 
@@ -126,7 +130,7 @@ def salvar_nova_mensagem_global(nova_msg):
     return True
 
 def salvar_palpite_global(msg_id, quem_palpitou, palpite, acertou):
-    """Atualiza de forma irreversível e persistente o palpite feito (Tentativa Única)."""
+    """Atualiza de forma irreversível e persistente o palpite feito no banco de dados."""
     client = obter_cliente_supabase()
     if client is not None:
         try:
@@ -500,8 +504,12 @@ with aba_mural:
 <div class="receipt-sawtooth"></div>
 """, unsafe_allow_html=True)
             
-            # Se o palpite NÃO foi feito, exibe o formulário de tentativa única
-            if not msg["palpite_feito"]:
+            # --- LÓGICA DE PRIVACIDADE DO PALPITE (SESSÃO INDIVIDUAL) ---
+            session_palpite = st.session_state.meus_palpites.get(orig_id, {})
+            palpite_feito_na_sessao = session_palpite.get("palpite_feito", False)
+            
+            # Se o palpite NÃO foi feito por ESTE utilizador no navegador dele, exibe o formulário
+            if not palpite_feito_na_sessao:
                 with st.form(key=f"form_palpite_{orig_id}"):
                     st.markdown("<p style='font-weight: bold; color: #212121 !important;'>🕵️ Adivinhe quem te enviou esta mensagem:</p>", unsafe_allow_html=True)
                     identificacao = st.text_input("Seu nome (quem recebeu o recado):", key=f"id_{orig_id}", placeholder="Digite seu nome para validar...").strip()
@@ -516,8 +524,18 @@ with aba_mural:
                             if normalizar_nome(identificacao) in normalizar_nome(msg["destinatario"]):
                                 # Registra palpite definitivo (Tentativa única)
                                 acertou = normalizar_nome(chute) == normalizar_nome(msg["remetente_dchat"])
-                                if salvar_palpite_global(orig_id, identificacao, chute, acertou):
-                                    st.rerun()
+                                
+                                # Grava na sessão local (Garante privacidade visual!)
+                                st.session_state.meus_palpites[orig_id] = {
+                                    "palpite_feito": True,
+                                    "quem_palpitou": identificacao,
+                                    "palpite": chute,
+                                    "acertou": acertou
+                                }
+                                
+                                # Salva globalmente no Supabase/JSON para auditoria silenciosa do admin
+                                salvar_palpite_global(orig_id, identificacao, chute, acertou)
+                                st.rerun()
                             else:
                                 st.markdown(f"""
                                 <div class="resultado-palpite-box" style="border-left: 6px solid #FF8F00 !important;">
@@ -527,18 +545,22 @@ with aba_mural:
                         else:
                             st.warning("Preencha o seu nome E o seu palpite antes de confirmar.")
             
-            # SE O PALPITE JÁ FOI REALIZADO (Resultado definitivo sem revelar o remetente em caso de erro)
+            # SE O PALPITE JÁ FOI REALIZADO POR ESTE UTILIZADOR (Visualização estritamente individual)
             else:
-                if msg["acertou"]:
+                acertou = session_palpite.get("acertou", False)
+                quem_palpitou = session_palpite.get("quem_palpitou", "")
+                palpite = session_palpite.get("palpite", "")
+                
+                if acertou:
                     st.markdown(f"""
                     <div class="resultado-palpite-box" style="border-left: 6px solid #28a745 !important;">
-                        <p>🎉 <b>{msg['quem_palpitou']}, você acertou em cheio!</b> Quem mandou esse recadinho foi o(a) <b>{msg['remetente_dchat']}</b>! 💛</p>
+                        <p>🎉 <b>{quem_palpitou}, você acertou em cheio!</b> Quem mandou esse recadinho foi o(a) <b>{msg['remetente_dchat']}</b>! 💛</p>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
                     st.markdown(f"""
                     <div class="resultado-palpite-box" style="border-left: 6px solid #dc3545 !important;">
-                        <p>❌ <b>Poxa, não foi dessa vez, {msg['quem_palpitou']}!</b> O seu palpite foi '{msg['palpite']}', mas o mistério continua 100% no ar... Quem será que mandou esse recadinho? 🕵️</p>
+                        <p>❌ <b>Poxa, não foi dessa vez, {quem_palpitou}!</b> O seu palpite foi '{palpite}', mas o mistério continua 100% no ar... Quem será que mandou esse recadinho? 🕵️</p>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -546,15 +568,30 @@ with aba_mural:
 if st.query_params.get("adm") == "true":
     st.markdown("---")
     if st.text_input("Senha Master:", type="password") == "99food2026":
-        st.dataframe(pd.DataFrame(mensagens_mural))
-        if st.button("Limpar Dados 🧹"):
-            # Limpa tabela se conectada ao Supabase
-            client = obter_cliente_supabase()
-            if client is not None:
-                try:
-                    # Deleta todas as linhas da tabela
-                    client.table("mensagens").delete().neq("id", -1).execute()
-                except Exception:
-                    pass
-            guardar_mensagens_locais([])
-            st.rerun()
+        df_mural = pd.DataFrame(mensagens_mural)
+        st.dataframe(df_mural)
+        
+        # Exibição unificada dos botões lado a lado para o administrador
+        col_down, col_clear = st.columns(2)
+        with col_down:
+            if not df_mural.empty:
+                # Converte dataframe para arquivo CSV decodificado com BOM (perfeito para abrir no Excel em português)
+                csv = df_mural.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(
+                    label="Baixar Relatório (CSV) 📊",
+                    data=csv,
+                    file_name=f"relatorio_arraia_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+        with col_clear:
+            if st.button("Limpar Dados 🧹"):
+                # Limpa tabela se conectada ao Supabase
+                client = obter_cliente_supabase()
+                if client is not None:
+                    try:
+                        # Deleta todas as linhas da tabela
+                        client.table("mensagens").delete().neq("id", -1).execute()
+                    except Exception:
+                        pass
+                guardar_mensagens_locais([])
+                st.rerun()
