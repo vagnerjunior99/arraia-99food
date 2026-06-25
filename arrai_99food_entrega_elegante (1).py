@@ -20,13 +20,18 @@ if "meus_palpites" not in st.session_state:
 # --- CONFIGURAÇÃO DO SUPABASE COM FALLBACK SEGURO ---
 FICHEIRO_MENSAGENS = "mensagens.json"
 
-# Lista estrita de moderação com calão, insultos e termos inadequados
+# Lista estrita de moderação com calão, insultos graves e xingamentos leves/desagradáveis
 PALAVRAS_BLOQUEADAS = [
+    # Graves/Calão
     "merda", "bosta", "caralho", "foder", "foda", "puta", "pqp", "fdp",
     "corno", "escroto", "arrombado", "idiota", "imbecil", "otario", "otaria",
     "burro", "burra", "estupido", "estupida", "lixo", "porra", "viado",
     "bicha", "vaca", "cadela", "vagabunda", "vagabundo", "incompetente",
-    "pessimo", "pessima", "ruim", "horroroso", "horrorosa", "odeio", "odiar"
+    "pessimo", "pessima", "ruim", "horroroso", "horrorosa", "odeio", "odiar",
+    # Moles/Desagradáveis (Adicionados para melhor moderação)
+    "bobo", "boba", "besta", "chato", "chata", "feio", "feia", "ridiculo", 
+    "ridicula", "tonto", "tonta", "palhaco", "palhaca", "irritante", "inutil",
+    "desagradavel", "chateado", "chateada", "maluco", "maluca", "doido", "doida"
 ]
 
 def obter_cliente_supabase():
@@ -475,7 +480,7 @@ with aba_enviar:
                 st.error("⚠️ O preenchimento do campo 'Para quem é a mensagem? (Nome do D-Chat)' é obrigatório!")
             elif not lembranca.strip():
                 st.error("⚠️ O preenchimento do campo com o recado/mensagem é obrigatório!")
-            # Validação estrita contra palavrões e mensagens negativas
+            # Validação estrita contra palavrões e mensagens negativas (inclui a nova lista expandida)
             elif not validar_conteudo_seguro(remetente_dchat) or not validar_conteudo_seguro(destinatario) or not validar_conteudo_seguro(lembranca):
                 st.error("⚠️ Atenção! Foram detetados termos inadequados ou palavras sensíveis no seu envio. Por favor, reescreva o seu recado utilizando termos adequados para garantir um ambiente saudável e cordial no nosso Arraiá! 🌽")
             else:
