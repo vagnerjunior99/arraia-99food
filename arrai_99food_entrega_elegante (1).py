@@ -20,6 +20,15 @@ if "meus_palpites" not in st.session_state:
 # --- CONFIGURAÇÃO DO SUPABASE COM FALLBACK SEGURO ---
 FICHEIRO_MENSAGENS = "mensagens.json"
 
+# Lista estrita de moderação com calão, insultos e termos inadequados
+PALAVRAS_BLOQUEADAS = [
+    "merda", "bosta", "caralho", "foder", "foda", "puta", "pqp", "fdp",
+    "corno", "escroto", "arrombado", "idiota", "imbecil", "otario", "otaria",
+    "burro", "burra", "estupido", "estupida", "lixo", "porra", "viado",
+    "bicha", "vaca", "cadela", "vagabunda", "vagabundo", "incompetente",
+    "pessimo", "pessima", "ruim", "horroroso", "horrorosa", "odeio", "odiar"
+]
+
 def obter_cliente_supabase():
     """Inicializa o cliente do Supabase utilizando as chaves dos Secrets se disponíveis."""
     try:
@@ -166,6 +175,29 @@ def normalizar_nome(texto):
     texto = str(texto).lower().strip()
     texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
     return texto
+
+# --- FUNÇÃO AUXILIAR DE SEGURANÇA E MODERAÇÃO ---
+def validar_conteudo_seguro(texto):
+    """Verifica se um determinado texto possui termos proibidos ou sensíveis."""
+    if not texto:
+        return True
+    
+    # Normaliza eliminando acentos e convertendo para minúsculas
+    texto_limpo = normalizar_nome(texto)
+    
+    # Substitui caracteres comuns de bypass (substituição visual)
+    substituicoes = {
+        '0': 'o', '1': 'i', '3': 'e', '4': 'a', '@': 'a', '$': 's', '7': 't', 
+        '.': '', '-': '', '_': '', '*': '', '#': '', '@': 'a'
+    }
+    for orig, subst in substituicoes.items():
+        texto_limpo = texto_limpo.replace(orig, subst)
+        
+    # Verifica a existência de termos ofensivos isolados ou como substring
+    for palavra in PALAVRAS_BLOQUEADAS:
+        if palavra in texto_limpo:
+            return False
+    return True
 
 # --- ESTILIZAÇÃO E DIRETRIZES DO BRAND BOOK 99FOOD ---
 # Amarelo Prioritário (#FFDD00), Laranja de Apoio (#FF8F00), Cinza Escuro de Contraste (#212121)
@@ -443,6 +475,9 @@ with aba_enviar:
                 st.error("⚠️ O preenchimento do campo 'Para quem é a mensagem? (Nome do D-Chat)' é obrigatório!")
             elif not lembranca.strip():
                 st.error("⚠️ O preenchimento do campo com o recado/mensagem é obrigatório!")
+            # Validação estrita contra palavrões e mensagens negativas
+            elif not validar_conteudo_seguro(remetente_dchat) or not validar_conteudo_seguro(destinatario) or not validar_conteudo_seguro(lembranca):
+                st.error("⚠️ Atenção! Foram detetados termos inadequados ou palavras sensíveis no seu envio. Por favor, reescreva o seu recado utilizando termos adequados para garantir um ambiente saudável e cordial no nosso Arraiá! 🌽")
             else:
                 mensagem_completa = f"{texto_base} {lembranca}"
                 
@@ -572,6 +607,31 @@ if st.query_params.get("adm") == "true":
         df_mural = pd.DataFrame(mensagens_mural)
         st.dataframe(df_mural)
         
+        # --- SEÇÃO DE GERENCIAMENTO DE MENSAGENS INDIVIDUAIS ---
+        st.markdown("### 🛠️ Gerenciamento de Mensagens")
+        if not df_mural.empty:
+            # Lista os IDs reais disponíveis no banco de dados do Supabase
+            lista_ids = df_mural["id"].tolist()
+            id_para_deletar = st.selectbox("Selecione o ID do recado que deseja excluir do mural:", lista_ids)
+            
+            # Botão de exclusão pontual
+            if st.button(f"Excluir Recado #{id_para_deletar} 🗑️"):
+                client = obter_cliente_supabase()
+                if client is not None:
+                    try:
+                        # Deleta o registro específico no Supabase
+                        client.table("mensagens").delete().eq("id", id_para_deletar).execute()
+                        st.success(f"Recado #{id_para_deletar} excluído com sucesso do Supabase!")
+                    except Exception as e:
+                        st.error(f"Erro ao deletar no Supabase: {e}")
+                
+                # Executa exclusão cirúrgica também no arquivo JSON de backup local
+                mensagens_locais = carregar_mensagens_locais()
+                mensagens_filtradas = [m for m in mensagens_locais if m["id"] != id_para_deletar]
+                guardar_mensagens_locais(mensagens_filtradas)
+                
+                st.rerun()
+        
         # Exibição unificada dos botões lado a lado para o administrador
         col_down, col_clear = st.columns(2)
         with col_down:
@@ -585,7 +645,7 @@ if st.query_params.get("adm") == "true":
                     mime="text/csv"
                 )
         with col_clear:
-            if st.button("Limpar Dados 🧹"):
+            if st.button("Limpar Todos os Dados 🧹"):
                 # Limpa tabela se conectada ao Supabase
                 client = obter_cliente_supabase()
                 if client is not None:
